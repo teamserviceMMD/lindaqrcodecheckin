@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee QR Check-In Webpage</title>
+    <!-- Google Fonts & Tailwind CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- HTML5 QR Code Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background: linear-gradient(135deg, #f7fbfa 0%, #e6f2ef 100%);
+        }
+        #reader video {
+            object-fit: cover !important;
+            border-radius: 0.75rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-[#16323b] flex flex-col items-center justify-center p-4">
+
+    <!-- Header Section -->
+    <header class="text-center max-w-xl mb-6">
+        <span class="text-xs font-bold tracking-[1.2px] text-[#087f7b] uppercase block mb-1">
+            Workplace Check-In
+        </span>
+        <h1 class="text-3xl font-extrabold text-[#16323b] mb-2">
+            สแกนเข้างานพนักงาน
+        </h1>
+        <p class="text-[#557278] text-base">
+            เช็กอินได้รวดเร็วและบันทึกข้อมูลลง Google Sheet ทันที
+        </p>
+    </header>
+
+    <!-- Main Container -->
+    <main class="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Left Panel: Scanner & Manual Input -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-[#e6f2ef] flex flex-col justify-between">
+            <div>
+                <h2 class="text-xl font-bold text-[#16323b] mb-4">
+                    สแกน QR จากบัตรพนักงาน
+                </h2>
+
+                <!-- Camera Container -->
+                <div id="reader" class="w-full bg-[#f9fcfb] rounded-xl overflow-hidden border border-dashed border-[#6a8589] p-2 text-center min-h-[200px] flex items-center justify-center">
+                    <span class="text-xs text-[#6a8589]">กด "เริ่มสแกน" เพื่อเปิดกล้อง</span>
+                </div>
+
+                <!-- Scanner Controls -->
+                <div class="flex gap-3 mt-4">
+                    <button id="start-btn" class="flex-1 bg-[#087f7b] text-white font-bold py-2.5 px-4 rounded-lg hover:bg-[#066360] transition">
+                        เริ่มสแกน
+                    </button>
+                    <button id="stop-btn" class="flex-1 bg-[#e7efed] text-[#25474d] font-bold py-2.5 px-4 rounded-lg hover:bg-[#d5e3e0] transition hidden">
+                        หยุดสแกน
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manual Input Section -->
+            <div class="mt-6 pt-6 border-t border-[#e6f2ef]">
+                <label class="block font-bold text-[#16323b] mb-2 text-sm">
+                    กรอกรหัส QR ด้วยตนเอง
+                </label>
+                <div class="flex gap-2">
+                    <input type="text" id="manual-code" placeholder="เช่น EMP-1001" class="flex-1 border border-[#6a8589]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#087f7b]">
+                    <button id="manual-btn" class="bg-[#f2a93b] text-[#183239] font-bold px-4 py-2 rounded-lg text-sm hover:bg-[#e0982a] transition">
+                        เช็กอิน
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel: Results & Recent Logs -->
+        <section class="flex flex-col gap-6">
+
+            <!-- Check-In Result -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-[#e6f2ef]">
+                <h2 class="text-xl font-bold text-[#16323b] mb-4">
+                    ผลการเช็กอิน
+                </h2>
+                
+                <div id="result-container" class="bg-[#f9fcfb] p-4 rounded-xl border border-[#e6f2ef] min-h-[140px] flex items-center justify-center text-center">
+                    <p class="text-[#6a8589] text-sm">
+                        รอรับข้อมูลการสแกน เมื่อเช็กอินสำเร็จ รายละเอียดพนักงานจะแสดงที่นี่
+                    </p>
+                </div>
+            </div>
+
+            <!-- Recent Logs -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-[#e6f2ef] flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-[#16323b]">
+                            รายการสแกนล่าสุด
+                        </h2>
+                        <button id="clear-btn" class="bg-[#fff1ee] text-[#b94030] text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-[#fde2dc] transition">
+                            ล้างรายการ
+                        </button>
+                    </div>
+
+                    <div id="recent-list" class="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                        <p id="empty-logs-text" class="text-[#6a8589] text-sm text-center py-6">
+                            ยังไม่มีรายการเช็กอิน
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Clear Confirmation Modal -->
+                <div id="clear-confirm" class="hidden mt-4 p-3 bg-[#fdf8f0] border border-[#f6e7c8] rounded-xl flex items-center justify-between">
+                    <span class="text-xs font-semibold text-[#7a4a09]">
+                        ต้องการล้างบันทึกหน้าจอใช่หรือไม่?
+                    </span>
+                    <div class="flex gap-2">
+                        <button id="confirm-clear-btn" class="bg-[#b94030] text-white text-xs font-bold px-2.5 py-1 rounded-md">ยืนยัน</button>
+                        <button id="cancel-clear-btn" class="bg-[#f6e7c8] text-[#68430d] text-xs font-bold px-2.5 py-1 rounded-md">ยกเลิก</button>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- App Logic -->
+    <script>
+
+// 🚨 วาง Web App URL ที่ได้จาก Google Apps Script ที่นี่
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzJk5d-97fQMPy-EGmpaeq2QG8jycl2_kk_0M68pgcty5_szdwk85dyfgACdAiNeBub/exec";
+
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        
+        // 🛠️ ตัวแปรควบคุมคิว (Queue System)
+        const checkInQueue = [];
+        let isProcessingQueue = false;
+        let lastScannedCode = "";
+        let lastScanTime = 0;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("start-btn")?.addEventListener("click", startScanner);
+            document.getElementById("stop-btn")?.addEventListener("click", stopScanner);
+            document.getElementById("manual-btn")?.addEventListener("click", handleManualCheckin);
+            document.getElementById("clear-btn")?.addEventListener("click", () => toggleConfirm(true));
+            document.getElementById("confirm-clear-btn")?.addEventListener("click", clearLogs);
+            document.getElementById("cancel-clear-btn")?.addEventListener("click", () => toggleConfirm(false));
+            
+            document.getElementById("manual-code")?.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") handleManualCheckin();
+            });
+        });
+
+        async function startScanner() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("เบราว์เซอร์ไม่รองรับกล้อง หรือยังไม่ได้รันบน HTTPS");
+                return;
+            }
+
+            try {
+                await navigator.mediaDevices.getUserMedia({ video: true });
+
+                html5QrcodeScanner = new Html5Qrcode("reader");
+                const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+                await html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess
+                );
+
+                isScanning = true;
+                document.getElementById("start-btn").classList.add("hidden");
+                document.getElementById("stop-btn").classList.remove("hidden");
+
+            } catch (err) {
+                console.error("Camera error:", err);
+                if (err.name === "NotAllowedError" || err.message.includes("Permissions policy")) {
+                    alert("ถูกปฏิเสธการเข้าถึงกล้อง โปรดตรวจสอบสิทธิ์กล้องในเบราว์เซอร์ หรือเปิดด้วย URL ของ Web App โดยตรง");
+                } else {
+                    alert("เกิดข้อผิดพลาดในการเปิดกล้อง: " + err.message);
+                }
+            }
+        }
+
+        function stopScanner() {
+            if (html5QrcodeScanner && isScanning) {
+                html5QrcodeScanner.stop().then(() => {
+                    isScanning = false;
+                    document.getElementById("start-btn").classList.remove("hidden");
+                    document.getElementById("stop-btn").classList.add("hidden");
+                }).catch(err => console.error("Error stopping scanner:", err));
+            }
+        }
+
+        function onScanSuccess(decodedText) {
+            if (isProcessing) return; // ป้องกันการส่งซ้ำติดๆ กัน
+            isProcessing = true;
+            processCheckIn(decodedText);
+            setTimeout(() => { isProcessing = false; }, 3000); // หน่วงเวลา 3 วินาทีก่อนรับรหัสถัดไป
+        }
+
+        function handleManualCheckin() {
+            const codeInput = document.getElementById("manual-code");
+            const code = codeInput.value.trim().toUpperCase();
+            if (code) {
+                processCheckIn(code);
+                codeInput.value = "";
+            }
+        }
+
+        // ➕ 1. เพิ่มรายการลงใน Queue
+        function enqueueCheckIn(empId) {
+            checkInQueue.push(empId);
+            updateQueueBadge();
+            processQueue(); // เรียกตัวประมวลผลคิว
+        }
+
+// 🔄 2. ตัวประมวลผลคิว (ทยอยยิง API ทีละคำขอ)
+        async function processQueue() {
+            if (isProcessingQueue || checkInQueue.length === 0) return;
+
+            isProcessingQueue = true;
+            const currentEmpId = checkInQueue.shift(); // ดึงคิวแรกสุดออกมารัน
+            updateQueueBadge();
+
+            await sendCheckInRequest(currentEmpId);
+
+            isProcessingQueue = false;
+            
+            // หากยังมีคิวเหลืออยู่ ให้รันคิวต่อไปอัตโนมัติ
+            if (checkInQueue.length > 0) {
+                processQueue();
+            }
+        }
+        
+// ปรับปรุงฟังก์ชัน processCheckIn ใน Index.html
+function processCheckIn(code) {
+    const resultBox = document.getElementById("result-container");
+    resultBox.innerHTML = `<p class="text-[#087f7b] font-bold text-sm animate-pulse">กำลังตรวจสอบข้อมูลพนักงาน และบันทึกเวลา...</p>`;
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+            .withSuccessHandler(handleResponse)
+            .withFailureHandler(handleError)
+            .recordCheckIn(code);
+    } else {
+        // กรณีทดสอบแบบ Offline
+        const now = new Date().toLocaleTimeString('th-TH');
+        handleResponse({
+            success: true,
+            empId: code,
+            name: "สมชาย ใจดี (Offline)",
+            dept: "ไอที",
+            timestamp: now
+        });
+    }
+}
+
+// ปรับปรุงฟังก์ชัน handleResponse
+function handleResponse(response) {
+    const resultBox = document.getElementById("result-container");
+    if (response.success) {
+        resultBox.innerHTML = `
+            <div class="w-full text-left space-y-2">
+                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                    <span class="text-xs text-[#6a8589]">รหัสพนักงาน</span>
+                    <span class="font-bold text-[#16323b]">${response.empId}</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                    <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
+                    <span class="font-bold text-[#16323b]">${response.name}</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                    <span class="text-xs text-[#6a8589]">แผนก</span>
+                    <span class="text-sm font-semibold text-[#557278]">${response.dept}</span>
+                </div>
+                <div class="flex justify-between items-center pt-1">
+                    <span class="text-xs text-[#6a8589]">เวลาเช็กอิน</span>
+                    <span class="text-sm font-bold text-[#087f7b]">${response.timestamp} น.</span>
+                </div>
+            </div>
+        `;
+
+        addRecentLog(response.empId, response.name, response.timestamp);
+    } else {
+        resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">เกิดข้อผิดพลาด: ${response.message}</p>`;
+    }
+}
+
+        function handleError(error) {
+            const resultBox = document.getElementById("result-container");
+            resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">ไม่สามารถบันทึกได้: ${error.message}</p>`;
+        }
+
+        function addRecentLog(code, name, time) {
+            const list = document.getElementById("recent-list");
+            const emptyText = document.getElementById("empty-logs-text");
+            if (emptyText) emptyText.remove();
+
+            const row = document.createElement("div");
+            row.className = "bg-[#f9fcfb] p-3 rounded-lg border border-[#e6f2ef] flex justify-between items-center text-sm";
+            row.innerHTML = `
+                <div>
+                    <div class="font-bold text-[#16323b]">${name} <span class="text-xs text-[#6a8589]">(${code})</span></div>
+                    <div class="text-xs text-[#6a8589]">เวลา: ${time} น.</div>
+                </div>
+                <span class="bg-[#d9f4e8] text-[#16704d] text-xs font-bold px-2 py-0.5 rounded">บันทึกแล้ว</span>
+            `;
+
+            list.prepend(row);
+        }
+
+        function toggleConfirm(show) {
+            document.getElementById("clear-confirm").classList.toggle("hidden", !show);
+        }
+
+        function clearLogs() {
+            document.getElementById("recent-list").innerHTML = `
+                <p id="empty-logs-text" class="text-[#6a8589] text-sm text-center py-6">
+                    ยังไม่มีรายการเช็กอิน
+                </p>
+            `;
+            toggleConfirm(false);
+        }
+    </script>
+</body>
+</html>
