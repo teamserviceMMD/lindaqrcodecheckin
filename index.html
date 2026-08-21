@@ -250,6 +250,9 @@
         function handleResponse(response) {
             const resultBox = document.getElementById("result-container");
             if (response.success) {
+                // 🛑 สั่งปิดกล้องอัตโนมัติเมื่อสแกนและบันทึกสำเร็จ
+                stopScanner();
+
                 resultBox.innerHTML = `
                     <div class="w-full text-left space-y-2">
                         <div class="flex items-center justify-between bg-[#d9f4e8] px-3 py-1.5 rounded-lg mb-2">
