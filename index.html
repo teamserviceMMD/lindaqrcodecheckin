@@ -128,18 +128,16 @@
 
     <!-- App Logic -->
     <script>
-
-// 🚨 วาง Web App URL ที่ได้จาก Google Apps Script ที่นี่
+        // 🚨 วาง Web App URL ที่ได้จาก Google Apps Script ที่นี่
         const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzJk5d-97fQMPy-EGmpaeq2QG8jycl2_kk_0M68pgcty5_szdwk85dyfgACdAiNeBub/exec";
 
         let html5QrcodeScanner = null;
         let isScanning = false;
+        let isProcessing = false; 
         
         // 🛠️ ตัวแปรควบคุมคิว (Queue System)
         const checkInQueue = [];
         let isProcessingQueue = false;
-        let lastScannedCode = "";
-        let lastScanTime = 0;
 
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("start-btn")?.addEventListener("click", startScanner);
@@ -156,18 +154,34 @@
 
         async function startScanner() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("เบราว์เซอร์ไม่รองรับกล้อง หรือยังไม่ได้รันบน HTTPS");
+                alert("เบราว์เซอร์ไม่รองรับการใช้งานกล้อง หรือยังไม่ได้รันบน HTTPS");
                 return;
             }
 
             try {
-                await navigator.mediaDevices.getUserMedia({ video: true });
+                // เคลียร์อินสแตนซ์เก่าถ้ามีค้างอยู่
+                if (html5QrcodeScanner) {
+                    try { await html5QrcodeScanner.stop(); } catch(e) {}
+                }
 
                 html5QrcodeScanner = new Html5Qrcode("reader");
                 const config = { fps: 10, qrbox: { width: 220, height: 220 } };
 
+                // ดึงรายชื่อกล้องเพื่อเลือกกล้องหลังอย่างแม่นยำบน Android
+                let devices = await Html5Qrcode.getCameras();
+                let cameraId = { facingMode: "environment" };
+                
+                if (devices && devices.length > 0) {
+                    const backCamera = devices.find(device => 
+                        device.label.toLowerCase().includes('back') || 
+                        device.label.toLowerCase().includes('rear') ||
+                        device.label.toLowerCase().includes('หลัง')
+                    );
+                    cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+                }
+
                 await html5QrcodeScanner.start(
-                    { facingMode: "environment" },
+                    cameraId,
                     config,
                     onScanSuccess
                 );
@@ -178,11 +192,15 @@
 
             } catch (err) {
                 console.error("Camera error:", err);
-                if (err.name === "NotAllowedError" || err.message.includes("Permissions policy")) {
-                    alert("ถูกปฏิเสธการเข้าถึงกล้อง โปรดตรวจสอบสิทธิ์กล้องในเบราว์เซอร์ หรือเปิดด้วย URL ของ Web App โดยตรง");
+                let errorMsg = "ไม่สามารถเปิดกล้องได้: ";
+                if (err.name === "NotAllowedError" || err.message.includes("Permission") || err.message.includes("Permissions policy")) {
+                    errorMsg += "ถูกปฏิเสธการเข้าถึงกล้อง หรือเปิดผ่าน In-App Browser (เช่น LINE/Facebook)\n\n💡 วิธีแก้: กดปุ่ม 3 จุดมุมขวาบน แล้วเลือก 'เปิดใน Chrome'";
+                } else if (err.name === "NotFoundError") {
+                    errorMsg += "ไม่พบอุปกรณ์กล้องในมือถือของคุณ";
                 } else {
-                    alert("เกิดข้อผิดพลาดในการเปิดกล้อง: " + err.message);
+                    errorMsg += err.message;
                 }
+                alert(errorMsg);
             }
         }
 
@@ -197,10 +215,10 @@
         }
 
         function onScanSuccess(decodedText) {
-            if (isProcessing) return; // ป้องกันการส่งซ้ำติดๆ กัน
+            if (isProcessing) return; 
             isProcessing = true;
             processCheckIn(decodedText);
-            setTimeout(() => { isProcessing = false; }, 3000); // หน่วงเวลา 3 วินาทีก่อนรับรหัสถัดไป
+            setTimeout(() => { isProcessing = false; }, 3000); 
         }
 
         function handleManualCheckin() {
@@ -212,84 +230,57 @@
             }
         }
 
-        // ➕ 1. เพิ่มรายการลงใน Queue
-        function enqueueCheckIn(empId) {
-            checkInQueue.push(empId);
-            updateQueueBadge();
-            processQueue(); // เรียกตัวประมวลผลคิว
-        }
+        function processCheckIn(code) {
+            const resultBox = document.getElementById("result-container");
+            resultBox.innerHTML = `<p class="text-[#087f7b] font-bold text-sm animate-pulse">กำลังตรวจสอบข้อมูลพนักงาน และบันทึกเวลา...</p>`;
 
-// 🔄 2. ตัวประมวลผลคิว (ทยอยยิง API ทีละคำขอ)
-        async function processQueue() {
-            if (isProcessingQueue || checkInQueue.length === 0) return;
-
-            isProcessingQueue = true;
-            const currentEmpId = checkInQueue.shift(); // ดึงคิวแรกสุดออกมารัน
-            updateQueueBadge();
-
-            await sendCheckInRequest(currentEmpId);
-
-            isProcessingQueue = false;
-            
-            // หากยังมีคิวเหลืออยู่ ให้รันคิวต่อไปอัตโนมัติ
-            if (checkInQueue.length > 0) {
-                processQueue();
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+                google.script.run
+                    .withSuccessHandler(handleResponse)
+                    .withFailureHandler(handleError)
+                    .recordCheckIn(code);
+            } else {
+                // กรณีทดสอบแบบ Offline บน GitHub Pages
+                const now = new Date().toLocaleTimeString('th-TH');
+                handleResponse({
+                    success: true,
+                    empId: code,
+                    name: "สมชาย ใจดี (Online Test)",
+                    dept: "Transportation",
+                    timestamp: now
+                });
             }
         }
-        
-// ปรับปรุงฟังก์ชัน processCheckIn ใน Index.html
-function processCheckIn(code) {
-    const resultBox = document.getElementById("result-container");
-    resultBox.innerHTML = `<p class="text-[#087f7b] font-bold text-sm animate-pulse">กำลังตรวจสอบข้อมูลพนักงาน และบันทึกเวลา...</p>`;
 
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-        google.script.run
-            .withSuccessHandler(handleResponse)
-            .withFailureHandler(handleError)
-            .recordCheckIn(code);
-    } else {
-        // กรณีทดสอบแบบ Offline
-        const now = new Date().toLocaleTimeString('th-TH');
-        handleResponse({
-            success: true,
-            empId: code,
-            name: "สมชาย ใจดี (Offline)",
-            dept: "ไอที",
-            timestamp: now
-        });
-    }
-}
+        function handleResponse(response) {
+            const resultBox = document.getElementById("result-container");
+            if (response.success) {
+                resultBox.innerHTML = `
+                    <div class="w-full text-left space-y-2">
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">รหัสพนักงาน</span>
+                            <span class="font-bold text-[#16323b]">${response.empId}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
+                            <span class="font-bold text-[#16323b]">${response.name}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">แผนก</span>
+                            <span class="text-sm font-semibold text-[#557278]">${response.dept}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1">
+                            <span class="text-xs text-[#6a8589]">เวลาเช็กอิน</span>
+                            <span class="text-sm font-bold text-[#087f7b]">${response.timestamp} น.</span>
+                        </div>
+                    </div>
+                `;
 
-// ปรับปรุงฟังก์ชัน handleResponse
-function handleResponse(response) {
-    const resultBox = document.getElementById("result-container");
-    if (response.success) {
-        resultBox.innerHTML = `
-            <div class="w-full text-left space-y-2">
-                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                    <span class="text-xs text-[#6a8589]">รหัสพนักงาน</span>
-                    <span class="font-bold text-[#16323b]">${response.empId}</span>
-                </div>
-                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                    <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
-                    <span class="font-bold text-[#16323b]">${response.name}</span>
-                </div>
-                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                    <span class="text-xs text-[#6a8589]">แผนก</span>
-                    <span class="text-sm font-semibold text-[#557278]">${response.dept}</span>
-                </div>
-                <div class="flex justify-between items-center pt-1">
-                    <span class="text-xs text-[#6a8589]">เวลาเช็กอิน</span>
-                    <span class="text-sm font-bold text-[#087f7b]">${response.timestamp} น.</span>
-                </div>
-            </div>
-        `;
-
-        addRecentLog(response.empId, response.name, response.timestamp);
-    } else {
-        resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">เกิดข้อผิดพลาด: ${response.message}</p>`;
-    }
-}
+                addRecentLog(response.empId, response.name, response.timestamp);
+            } else {
+                resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">เกิดข้อผิดพลาด: ${response.message}</p>`;
+            }
+        }
 
         function handleError(error) {
             const resultBox = document.getElementById("result-container");
