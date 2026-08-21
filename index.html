@@ -229,27 +229,17 @@
                 codeInput.value = "";
             }
         }
-
         function processCheckIn(code) {
             const resultBox = document.getElementById("result-container");
             resultBox.innerHTML = `<p class="text-[#087f7b] font-bold text-sm animate-pulse">กำลังตรวจสอบข้อมูลพนักงาน และบันทึกเวลา...</p>`;
 
-            if (typeof google !== 'undefined' && google.script && google.script.run) {
-                google.script.run
-                    .withSuccessHandler(handleResponse)
-                    .withFailureHandler(handleError)
-                    .recordCheckIn(code);
-            } else {
-                // กรณีทดสอบแบบ Offline บน GitHub Pages
-                const now = new Date().toLocaleTimeString('th-TH');
-                handleResponse({
-                    success: true,
-                    empId: code,
-                    name: "สมชาย ใจดี (Online Test)",
-                    dept: "Transportation",
-                    timestamp: now
-                });
-            }
+            // ใช้ GET Request พ่วง Query String ไปที่ Apps Script
+            fetch(`${GAS_WEB_APP_URL}?empId=${encodeURIComponent(code)}`)
+                .then(response => response.json())
+                .then(data => {
+                    handleResponse(data);
+                })
+                .catch(handleError);
         }
 
         function handleResponse(response) {
