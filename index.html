@@ -127,6 +127,7 @@
     </main>
 
     <!-- App Logic -->
+    <!-- App Logic -->
     <script>
         // 🚨 วาง Web App URL ที่ได้จาก Google Apps Script ที่นี่
         const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzJk5d-97fQMPy-EGmpaeq2QG8jycl2_kk_0M68pgcty5_szdwk85dyfgACdAiNeBub/exec";
@@ -134,10 +135,6 @@
         let html5QrcodeScanner = null;
         let isScanning = false;
         let isProcessing = false; 
-        
-        // 🛠️ ตัวแปรควบคุมคิว (Queue System)
-        const checkInQueue = [];
-        let isProcessingQueue = false;
 
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("start-btn")?.addEventListener("click", startScanner);
@@ -159,7 +156,6 @@
             }
 
             try {
-                // เคลียร์อินสแตนซ์เก่าถ้ามีค้างอยู่
                 if (html5QrcodeScanner) {
                     try { await html5QrcodeScanner.stop(); } catch(e) {}
                 }
@@ -167,7 +163,6 @@
                 html5QrcodeScanner = new Html5Qrcode("reader");
                 const config = { fps: 10, qrbox: { width: 220, height: 220 } };
 
-                // ดึงรายชื่อกล้องเพื่อเลือกกล้องหลังอย่างแม่นยำบน Android
                 let devices = await Html5Qrcode.getCameras();
                 let cameraId = { facingMode: "environment" };
                 
@@ -217,23 +212,33 @@
         function onScanSuccess(decodedText) {
             if (isProcessing) return; 
             isProcessing = true;
+            
+            // เล่นเสียงปี๊บสั้นๆ เมื่อสแกนสำเร็จ
+            playBeepSound();
+            
             processCheckIn(decodedText);
-            setTimeout(() => { isProcessing = false; }, 3000); 
+            setTimeout(() => { isProcessing = false; }, 3500); 
         }
 
         function handleManualCheckin() {
             const codeInput = document.getElementById("manual-code");
             const code = codeInput.value.trim().toUpperCase();
             if (code) {
+                playBeepSound();
                 processCheckIn(code);
                 codeInput.value = "";
             }
         }
+
         function processCheckIn(code) {
             const resultBox = document.getElementById("result-container");
-            resultBox.innerHTML = `<p class="text-[#087f7b] font-bold text-sm animate-pulse">กำลังตรวจสอบข้อมูลพนักงาน และบันทึกเวลา...</p>`;
+            resultBox.innerHTML = `
+                <div class="flex flex-col items-center justify-center space-y-2 py-4">
+                    <div class="w-8 h-8 border-4 border-[#087f7b] border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-[#087f7b] font-bold text-sm">กำลังบันทึกเวลาเข้าระบบ...</p>
+                </div>
+            `;
 
-            // ใช้ GET Request พ่วง Query String ไปที่ Apps Script
             fetch(`${GAS_WEB_APP_URL}?empId=${encodeURIComponent(code)}`)
                 .then(response => response.json())
                 .then(data => {
@@ -247,6 +252,10 @@
             if (response.success) {
                 resultBox.innerHTML = `
                     <div class="w-full text-left space-y-2">
+                        <div class="flex items-center justify-between bg-[#d9f4e8] px-3 py-1.5 rounded-lg mb-2">
+                            <span class="text-xs font-bold text-[#16704d]">✅ เช็กอินเสร็จเรียบร้อย</span>
+                            <span class="text-xs font-bold text-[#087f7b]">${response.timestamp} น.</span>
+                        </div>
                         <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
                             <span class="text-xs text-[#6a8589]">รหัสพนักงาน</span>
                             <span class="font-bold text-[#16323b]">${response.empId}</span>
@@ -255,26 +264,43 @@
                             <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
                             <span class="font-bold text-[#16323b]">${response.name}</span>
                         </div>
-                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                        <div class="flex justify-between items-center">
                             <span class="text-xs text-[#6a8589]">แผนก</span>
                             <span class="text-sm font-semibold text-[#557278]">${response.dept}</span>
-                        </div>
-                        <div class="flex justify-between items-center pt-1">
-                            <span class="text-xs text-[#6a8589]">เวลาเช็กอิน</span>
-                            <span class="text-sm font-bold text-[#087f7b]">${response.timestamp} น.</span>
                         </div>
                     </div>
                 `;
 
                 addRecentLog(response.empId, response.name, response.timestamp);
             } else {
-                resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">เกิดข้อผิดพลาด: ${response.message}</p>`;
+                resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ เกิดข้อผิดพลาด: ${response.message}</p>`;
             }
         }
 
         function handleError(error) {
             const resultBox = document.getElementById("result-container");
-            resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">ไม่สามารถบันทึกได้: ${error.message}</p>`;
+            resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ ไม่สามารถบันทึกได้: ${error.message}</p>`;
+        }
+
+        // ฟังก์ชันสร้างเสียงติ๊ดด้วย Web Audio API (ไม่ต้องโหลดไฟล์เสียงเพิ่ม)
+        function playBeepSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 800; // ความถี่เสียง
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.15); // เล่นนาน 0.15 วินาที
+            } catch (e) {
+                // หากเบราว์เซอร์บล็อกเสียงอัตโนมัติ จะข้ามส่วนนี้ไปโดยไม่ให้โปรแกรมพัง
+            }
         }
 
         function addRecentLog(code, name, time) {
@@ -283,13 +309,13 @@
             if (emptyText) emptyText.remove();
 
             const row = document.createElement("div");
-            row.className = "bg-[#f9fcfb] p-3 rounded-lg border border-[#e6f2ef] flex justify-between items-center text-sm";
+            row.className = "bg-[#f9fcfb] p-3 rounded-lg border border-[#e6f2ef] flex justify-between items-center text-sm animate-fade-in";
             row.innerHTML = `
                 <div>
                     <div class="font-bold text-[#16323b]">${name} <span class="text-xs text-[#6a8589]">(${code})</span></div>
                     <div class="text-xs text-[#6a8589]">เวลา: ${time} น.</div>
                 </div>
-                <span class="bg-[#d9f4e8] text-[#16704d] text-xs font-bold px-2 py-0.5 rounded">บันทึกแล้ว</span>
+                <span class="bg-[#d9f4e8] text-[#16704d] text-xs font-bold px-2 py-0.5 rounded">สำเร็จ</span>
             `;
 
             list.prepend(row);
