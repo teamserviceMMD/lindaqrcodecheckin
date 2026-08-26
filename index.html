@@ -235,70 +235,63 @@
 
         function processCheckIn(empId) {
             const resultBox = document.getElementById("result-container");
-            
-            // 1. ดึงเวลาปัจจุบันมาแสดงผลลัพธ์ทันที (รวดเร็ว 0 วินาที)
-            const now = new Date();
-            const timeFormatted = now.toTimeString().split(' ')[0];
-
-            // 2. แสดงผลสำเร็จเบื้องต้นทันที ไม่ต้องรอ Google Sheet ตอบกลับ
             resultBox.innerHTML = `
-                <div class="w-full text-left space-y-2">
-                    <div class="flex items-center justify-between bg-[#d9f4e8] px-3 py-1.5 rounded-lg mb-2">
-                        <span class="text-xs font-bold text-[#16704d]">✅ บันทึกเช็กอินสำเร็จ</span>
-                        <span class="text-xs font-bold text-[#087f7b]">${timeFormatted} น.</span>
-                    </div>
-                    <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                        <span class="text-xs text-[#6a8589]">รหัสพนักงาน (CODE MMD)</span>
-                        <span class="font-bold text-[#16323b]">${empId}</span>
-                    </div>
-                    <div class="flex justify-between items-center pb-2">
-                        <span class="text-xs text-[#6a8589]">สถานะ</span>
-                        <span class="font-bold text-[#16704d]">กำลังดึงข้อมูลชื่อพนักงาน...</span>
-                    </div>
+                <div class="flex flex-col items-center justify-center space-y-2 py-4">
+                    <div class="w-8 h-8 border-4 border-[#087f7b] border-t-transparent rounded-full animate-spin"></div>
+                    <p class="text-[#087f7b] font-bold text-sm">กำลังค้นหาและบันทึกข้อมูล...</p>
                 </div>
             `;
 
-            addRecentLog("-", empId, "พนักงานรหัส: " + empId, timeFormatted);
-
-            // 3. ส่งข้อมูลไปบันทึกที่ Google Apps Script แบบเบื้องหลัง (Background Sync)
             fetch(`${GAS_WEB_APP_URL}?empId=${encodeURIComponent(empId)}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.success) {
-                        const cusId = (data.customerId && data.customerId !== "undefined") ? data.customerId : "-";
-                        const name = (data.name && data.name !== "undefined") ? data.name : "-";
-                        const dept = (data.dept && data.dept !== "undefined") ? data.dept : "-";
-                        
-                        // อัปเดตข้อมูลจริงให้สมบูรณ์บนหน้าจอเมื่อเซิร์ฟเวอร์ประมวลผลเสร็จ
-                        resultBox.innerHTML = `
-                            <div class="w-full text-left space-y-2">
-                                <div class="flex items-center justify-between bg-[#d9f4e8] px-3 py-1.5 rounded-lg mb-2">
-                                    <span class="text-xs font-bold text-[#16704d]">✅ เช็กอินเสร็จเรียบร้อย</span>
-                                    <span class="text-xs font-bold text-[#087f7b]">${data.timestamp} น.</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                                    <span class="text-xs text-[#6a8589]">รหัสลูกค้า (CODE CUS)</span>
-                                    <span class="font-bold text-[#16323b]">${cusId}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                                    <span class="text-xs text-[#6a8589]">รหัสพนักงาน (CODE MMD)</span>
-                                    <span class="font-bold text-[#16323b]">${data.empId}</span>
-                                </div>
-                                <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                                    <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
-                                    <span class="font-bold text-[#16323b]">${name}</span>
-                                </div>
-                                <div class="flex justify-between items-center">
-                                    <span class="text-xs text-[#6a8589]">แผนก</span>
-                                    <span class="text-sm font-semibold text-[#557278]">${dept}</span>
-                                </div>
-                            </div>
-                        `;
-                    }
+                    handleResponse(data);
                 })
-                .catch(err => {
-                    console.error("Background sync error:", err);
-                });
+                .catch(handleError);
+        }
+
+        function handleResponse(response) {
+            const resultBox = document.getElementById("result-container");
+            if (response.success) {
+                const cusId = (response.customerId && response.customerId !== "undefined") ? response.customerId : "-";
+                const empId = (response.empId && response.empId !== "undefined") ? response.empId : "-";
+                const name = (response.name && response.name !== "undefined") ? response.name : "-";
+                const dept = (response.dept && response.dept !== "undefined") ? response.dept : "-";
+
+                resultBox.innerHTML = `
+                    <div class="w-full text-left space-y-2">
+                        <div class="flex items-center justify-between bg-[#d9f4e8] px-3 py-1.5 rounded-lg mb-2">
+                            <span class="text-xs font-bold text-[#16704d]">✅ เช็กอินเสร็จเรียบร้อย</span>
+                            <span class="text-xs font-bold text-[#087f7b]">${response.timestamp} น.</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">รหัสลูกค้า (CODE CUS)</span>
+                            <span class="font-bold text-[#16323b]">${cusId}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">รหัสพนักงาน (CODE MMD)</span>
+                            <span class="font-bold text-[#16323b]">${empId}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
+                            <span class="font-bold text-[#16323b]">${name}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-[#6a8589]">แผนก</span>
+                            <span class="text-sm font-semibold text-[#557278]">${dept}</span>
+                        </div>
+                    </div>
+                `;
+
+                addRecentLog(cusId, empId, name, response.timestamp);
+            } else {
+                resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ เกิดข้อผิดพลาด: ${response.message}</p>`;
+            }
+        }
+
+        function handleError(error) {
+            const resultBox = document.getElementById("result-container");
+            resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ ไม่สามารถบันทึกได้: ${error.message}</p>`;
         }
 
         function playBeepSound() {
