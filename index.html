@@ -41,6 +41,7 @@
 
         <!-- Left Panel: Scanner & Manual Input -->
         <section class="bg-white p-6 rounded-2xl shadow-sm border border-[#e6f2ef] flex flex-col justify-between">
+            
             <div>
                 <h2 class="text-xl font-bold text-[#16323b] mb-4">
                     สแกน QR จากบัตรพนักงาน
@@ -65,10 +66,10 @@
             <!-- Manual Input Section -->
             <div class="mt-6 pt-6 border-t border-[#e6f2ef]">
                 <label class="block font-bold text-[#16323b] mb-2 text-sm">
-                    กรอกรหัส QR ด้วยตนเอง
+                    กรอกรหัสพนักงานด้วยตนเอง
                 </label>
                 <div class="flex gap-2">
-                    <input type="text" id="manual-code" placeholder="เช่น EMP-1001" class="flex-1 border border-[#6a8589]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#087f7b]">
+                    <input type="text" id="manual-code" placeholder="เช่น 26080322" class="flex-1 border border-[#6a8589]/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#087f7b]">
                     <button id="manual-btn" class="bg-[#f2a93b] text-[#183239] font-bold px-4 py-2 rounded-lg text-sm hover:bg-[#e0982a] transition">
                         เช็กอิน
                     </button>
@@ -126,7 +127,6 @@
         </section>
     </main>
 
-    <!-- App Logic -->
     <!-- App Logic -->
     <script>
         // 🚨 วาง Web App URL ที่ได้จาก Google Apps Script ที่นี่
@@ -213,33 +213,36 @@
             if (isProcessing) return; 
             isProcessing = true;
             
-            // เล่นเสียงปี๊บสั้นๆ เมื่อสแกนสำเร็จ
-            playBeepSound();
+            // 🛑 ปิดกล้องทันทีที่สแกน QR Code สำเร็จ
+            stopScanner();
             
+            playBeepSound();
             processCheckIn(decodedText);
+            
             setTimeout(() => { isProcessing = false; }, 3500); 
         }
 
         function handleManualCheckin() {
             const codeInput = document.getElementById("manual-code");
-            const code = codeInput.value.trim().toUpperCase();
-            if (code) {
+            const empId = codeInput.value.trim().toUpperCase();
+            
+            if (empId) {
                 playBeepSound();
-                processCheckIn(code);
+                processCheckIn(empId);
                 codeInput.value = "";
             }
         }
 
-        function processCheckIn(code) {
+        function processCheckIn(empId) {
             const resultBox = document.getElementById("result-container");
             resultBox.innerHTML = `
                 <div class="flex flex-col items-center justify-center space-y-2 py-4">
                     <div class="w-8 h-8 border-4 border-[#087f7b] border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-[#087f7b] font-bold text-sm">กำลังบันทึกเวลาเข้าระบบ...</p>
+                    <p class="text-[#087f7b] font-bold text-sm">กำลังค้นหาและบันทึกข้อมูล...</p>
                 </div>
             `;
 
-            fetch(`${GAS_WEB_APP_URL}?empId=${encodeURIComponent(code)}`)
+            fetch(`${GAS_WEB_APP_URL}?empId=${encodeURIComponent(empId)}`)
                 .then(response => response.json())
                 .then(data => {
                     handleResponse(data);
@@ -250,8 +253,10 @@
         function handleResponse(response) {
             const resultBox = document.getElementById("result-container");
             if (response.success) {
-                // 🛑 สั่งปิดกล้องอัตโนมัติเมื่อสแกนและบันทึกสำเร็จ
-                stopScanner();
+                const cusId = (response.customerId && response.customerId !== "undefined") ? response.customerId : "-";
+                const empId = (response.empId && response.empId !== "undefined") ? response.empId : "-";
+                const name = (response.name && response.name !== "undefined") ? response.name : "-";
+                const dept = (response.dept && response.dept !== "undefined") ? response.dept : "-";
 
                 resultBox.innerHTML = `
                     <div class="w-full text-left space-y-2">
@@ -260,21 +265,25 @@
                             <span class="text-xs font-bold text-[#087f7b]">${response.timestamp} น.</span>
                         </div>
                         <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
-                            <span class="text-xs text-[#6a8589]">รหัสพนักงาน</span>
-                            <span class="font-bold text-[#16323b]">${response.empId}</span>
+                            <span class="text-xs text-[#6a8589]">รหัสลูกค้า (CODE CUS)</span>
+                            <span class="font-bold text-[#16323b]">${cusId}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
+                            <span class="text-xs text-[#6a8589]">รหัสพนักงาน (CODE MMD)</span>
+                            <span class="font-bold text-[#16323b]">${empId}</span>
                         </div>
                         <div class="flex justify-between items-center border-b border-[#e6f2ef] pb-2">
                             <span class="text-xs text-[#6a8589]">ชื่อพนักงาน</span>
-                            <span class="font-bold text-[#16323b]">${response.name}</span>
+                            <span class="font-bold text-[#16323b]">${name}</span>
                         </div>
                         <div class="flex justify-between items-center">
                             <span class="text-xs text-[#6a8589]">แผนก</span>
-                            <span class="text-sm font-semibold text-[#557278]">${response.dept}</span>
+                            <span class="text-sm font-semibold text-[#557278]">${dept}</span>
                         </div>
                     </div>
                 `;
 
-                addRecentLog(response.empId, response.name, response.timestamp);
+                addRecentLog(cusId, empId, name, response.timestamp);
             } else {
                 resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ เกิดข้อผิดพลาด: ${response.message}</p>`;
             }
@@ -285,7 +294,6 @@
             resultBox.innerHTML = `<p class="text-[#b94030] font-bold text-sm">❌ ไม่สามารถบันทึกได้: ${error.message}</p>`;
         }
 
-        // ฟังก์ชันสร้างเสียงติ๊ดด้วย Web Audio API (ไม่ต้องโหลดไฟล์เสียงเพิ่ม)
         function playBeepSound() {
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -293,20 +301,18 @@
                 const gainNode = audioCtx.createGain();
                 
                 oscillator.type = 'sine';
-                oscillator.frequency.value = 800; // ความถี่เสียง
+                oscillator.frequency.value = 800;
                 gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
                 
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
                 oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 0.15); // เล่นนาน 0.15 วินาที
-            } catch (e) {
-                // หากเบราว์เซอร์บล็อกเสียงอัตโนมัติ จะข้ามส่วนนี้ไปโดยไม่ให้โปรแกรมพัง
-            }
+                oscillator.stop(audioCtx.currentTime + 0.15); 
+            } catch (e) {}
         }
 
-        function addRecentLog(code, name, time) {
+        function addRecentLog(cusId, empId, name, time) {
             const list = document.getElementById("recent-list");
             const emptyText = document.getElementById("empty-logs-text");
             if (emptyText) emptyText.remove();
@@ -315,7 +321,8 @@
             row.className = "bg-[#f9fcfb] p-3 rounded-lg border border-[#e6f2ef] flex justify-between items-center text-sm animate-fade-in";
             row.innerHTML = `
                 <div>
-                    <div class="font-bold text-[#16323b]">${name} <span class="text-xs text-[#6a8589]">(${code})</span></div>
+                    <div class="font-bold text-[#16323b]">${name}</div>
+                    <div class="text-xs text-[#6a8589]">Cus: ${cusId} | MMD: ${empId}</div>
                     <div class="text-xs text-[#6a8589]">เวลา: ${time} น.</div>
                 </div>
                 <span class="bg-[#d9f4e8] text-[#16704d] text-xs font-bold px-2 py-0.5 rounded">สำเร็จ</span>
